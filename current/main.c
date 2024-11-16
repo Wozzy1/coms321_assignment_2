@@ -1,6 +1,5 @@
 #include<stdio.h>
 #include<string.h>
-// #include"BinaryToASM.h"
 #define NUM_INSTRUCTIONS 25
 
 typedef struct instruction {
@@ -9,7 +8,10 @@ typedef struct instruction {
     short opcode;       // 2 bytes
 } instruction;
 
-// 25 instructions
+/**
+ * Small look up table of the needed instructions, 
+ * the instruction type, and the opcode in binary.
+ */
 instruction instructions[] = {
     {"ADD",   "R",  0b10001011000},
     {"ADDI",  "I",  0b1001000100},
@@ -63,6 +65,12 @@ int findInstruction(int opcode) {
     return -1;
 }
 
+/**
+ * Core method that requires knowing what instruction the 32 bit string represents,
+ * then parses it, formats it into assembly, and returns the formatted string.
+ * 
+ * Handles the determination of the instruction type and acts accordingly.
+ */
 void createLine(char* line, instruction* inst, int binary) {
     char type[3];
     strcpy(type, inst->type);
@@ -83,8 +91,6 @@ void createLine(char* line, instruction* inst, int binary) {
         /*
         LSL x1, x1, #3
         */
-
-
 
         sprintf(line, "%-5s ", inst->mnemonic);
         // check if rd is special or not
@@ -112,6 +118,7 @@ void createLine(char* line, instruction* inst, int binary) {
             strcat(line, temp);
         }
 
+        // check for LSR or LSR since they do not use RM, instead use SHAMT
         if (!strcmp(inst->mnemonic, "LSL") || !strcmp(inst->mnemonic, "LSR")) {
             char temp[5];
             sprintf(temp, "#%d ", shamt);
@@ -130,11 +137,6 @@ void createLine(char* line, instruction* inst, int binary) {
                 strcat(line, temp);
             }
         }
-
-        // sprintf(line, "%-5s x%d, x%d, x%d", inst->mnemonic, rd, rn, rm);
-
-        // appendBits(line, 0, opcode, 11);
-
     } else if (!strcmp(type, "I")) {
 
     } else if (!strcmp(type, "D")) {
@@ -147,12 +149,16 @@ void createLine(char* line, instruction* inst, int binary) {
 
 }
 
+/**
+ * Core method that takes a 32 bit instruction, disassembles it,
+ * and prints it to the console (for now).
+ */
 void decode_instruction(int binary) {
     int opcode = (binary >> 21) & 0x7FF;
     int res = findInstruction(opcode);
     printf("index of instruction: %d\n", res);
 
-    char line[50];
+    char line[25];
     createLine(line, &instructions[res], binary);
 
     printf("%s\n", line);
@@ -165,6 +171,9 @@ void printInstruction(instruction* inst) {
     printf("%-5s %s %#x\n", inst->mnemonic, inst->type, inst->opcode);
 }
 
+/**
+ * Helper method to return the number of bits in a bitstring
+ */
 unsigned int countBits(unsigned int n) 
 { 
    unsigned int count = 0; 
@@ -175,12 +184,18 @@ unsigned int countBits(unsigned int n)
     return count; 
 }
 
+/**
+ * Helper method to concat a binary value to a string
+ */
 void appendBits(char* str, int start, unsigned int binary, int length) {
     for (int i = start, pos = 0; i < length; i++, pos++) {
         str[i] = (binary >> pos) & 0x1 ? '1' : '0';
     }
 }
 
+/**
+ * Helper method to print a bianry string of any length
+ */
 void printBits(unsigned int n) {
     int numBits = countBits(n);
     // char* ptr = malloc(ptr, numBits * 1);
@@ -190,6 +205,10 @@ void printBits(unsigned int n) {
     printf("\n");
 }
 
+/**
+ * Helper method to handle special register names 
+ * such as SP, FP, LR, and XZR when printing.
+ */
 void replaceSpecialRegister(char* reg, int r) {
     switch (r) {
     case 28:                
@@ -213,7 +232,7 @@ int main() {
 
     // printInstruction(&instructions[0]);
     // decode_instruction(0b11001011000111110000000101001100);
-    decode_instruction(0x9B030041);
+    decode_instruction(0xD360F8E3);
     // printf("Count %u\n", countBits(0b10001011000111110000001111100000));
     // printf("%lu", sizeof(int));
 
