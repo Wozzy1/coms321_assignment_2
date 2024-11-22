@@ -59,17 +59,24 @@ void replaceSpecialRegister(char* reg, int r);
  * and return the index of which instruction matches.
  */
 int findInstruction(int opcode) {
-    // printf("Attempting to find R type\n");
+    // searching for R and D type
     for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
         if (opcode == instructions[i].opcode) {
             printf("opcode received: %#x\n", opcode);
             return i;
         }
     }
-    // printf("Attempting to find I type\n");
+    // searching for I type
     for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
         if (((opcode >> 1) & 0x7FF) == instructions[i].opcode) {
             printf("opcode received: %#x\n", (opcode >> 1) & 0x7FF);
+            return i;
+        }
+    }
+    // searching for B type
+    for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
+        if (((opcode >> 5) & 0x3F) == instructions[i].opcode) {
+            printf("opcode received: %#x\n", (opcode >> 5) & 0x3F);
             return i;
         }
     }
@@ -247,13 +254,24 @@ void createLine(char* line, instruction* inst, int binary) {
             sprintf(temp, "x%d, ", rn);
             strcat(line, temp);
         }
-        char offset[6];
 
+        char offset[6];
         sprintf(offset, "#%d]", dt_address);
         strcat(line, offset);
-
-
     } else if (!strcmp(type, "B")) {
+        signed int br_address = binary & 0x3FFFF;
+        // int opcode = (binary >> 26) & 0x3F;
+
+        if (br_address & (1 << 17)) { // check if the 18th bit is 1
+            br_address |= ~0x3FFFF;   // sign extend to 32 bits
+        }
+        // need to handle labeling towards the end
+        sprintf(line, "%-5s", inst->mnemonic);
+        char offset[10];
+        sprintf(offset, "#%d", br_address);
+        strcat(line, offset);
+
+        // TODO return br_address through pointer variable for later showing labels
 
     } else if (!strcmp(type, "CB")) {
 
@@ -364,8 +382,7 @@ int main() {
     // for (int i = 0; i < 6; i++) {
     //     decode_instruction(nums[i]);
     // }
-    decode_instruction(0xF8400061);
-    decode_instruction(0xF8008384);
+    decode_instruction(0x94000000);
     // printf("Count %u\n", countBits(0b10001011000111110000001111100000));
     // printf("%lu", sizeof(int));
 

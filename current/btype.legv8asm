@@ -1,0 +1,2 @@
+first: ADDI x0, x0, #16
+second: BL second
