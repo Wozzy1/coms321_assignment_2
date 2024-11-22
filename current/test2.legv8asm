@@ -1,0 +1,9 @@
+ADDI x1, XZR, #1
+CBZ x1, skip
+ADD x2, x2, x2
+ADD x2, x2, x2
+ADD x1, XZR, XZR
+BR LR
+HALT
+skip:
+HALT

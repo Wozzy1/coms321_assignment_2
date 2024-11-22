@@ -1,0 +1,2 @@
+LDUR x1, [x3, #0]
+STUR x4, [SP, #8]

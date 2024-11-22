@@ -1,13 +1,14 @@
+top:
 ADD x1, x2, x3
 AND x2, x3, x4
-//BR 
+BR x18
 EOR x3, x4, x5
 LSL x3, x7, #62
 LSR x7, x1, #7
 ORR x2, x1, x3
 SUB x5, x8, x9
 SUBS x1, x1, x3
-MUL x1, x2, x3 // special
+MUL x1, x2, x3
 PRNT
 PRNL
 DUMP
