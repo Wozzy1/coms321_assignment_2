@@ -1,0 +1,11 @@
+top:
+ADDI x1, XZR, #10
+SUBI SP, SP, #8
+STUR x1, [SP, #0]
+CBNZ x1, top
+SUBIS x2, x1, #11
+B.MI top
+
+
+end:
+HALT

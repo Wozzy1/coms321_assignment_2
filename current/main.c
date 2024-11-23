@@ -1,6 +1,6 @@
 #include<stdio.h>
 #include<string.h>
-#define NUM_INSTRUCTIONS 25
+#define NUM_INSTRUCTIONS 26
 
 /**
  * Custom struct type for a given instruction that 
@@ -23,6 +23,7 @@ instruction instructions[] = {
     {"ANDI",  "I",  0b1001001000},
     {"B",     "B",  0b000101},
     {"BL",    "B",  0b100101},
+    {"B.",    "CB", 0b01010100},
     {"BR",    "R",  0b11010110000},
     {"CBNZ",  "CB", 0b10110101},
     {"CBZ",   "CB", 0b10110100},
@@ -46,13 +47,14 @@ instruction instructions[] = {
 };
 
 int findInstruction(int opcode);
-void createLine(char* line, instruction* inst, int binary);
+void createLine(char* line, instruction* inst, int binary, int* branch_offset);
 void decode_instruction(int binary);
 void printInstruction(instruction* inst);
 unsigned int countBits(unsigned int n);
 void appendBits(char* str, int start, unsigned int binary, int length);
 void printBits(unsigned int n);
 void replaceSpecialRegister(char* reg, int r);
+void replaceBranchCondition(char* condition, int rt);
 
 /**
  * Given an opcode, linear search through instructions 
@@ -80,6 +82,13 @@ int findInstruction(int opcode) {
             return i;
         }
     }
+    // searching for CB type
+    for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
+        if (((opcode >> 3) & 0xFF) == instructions[i].opcode) {
+            printf("opcode received: %#x\n", (opcode >> 3) & 0xFF);
+            return i;
+        }
+    }
 
     
     // for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
@@ -104,7 +113,7 @@ int findInstruction(int opcode) {
  * 
  * Handles the determination of the instruction type and acts accordingly.
  */
-void createLine(char* line, instruction* inst, int binary) {
+void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
     char type[3];
     strcpy(type, inst->type);
     printf("Received type: %s\n", type);
@@ -238,7 +247,7 @@ void createLine(char* line, instruction* inst, int binary) {
             strcat(line, rt_c);
             strcat(line, ", [");
         } else {
-            char temp[5];
+            char temp[8];
             sprintf(temp, "x%d, [", rt);
             strcat(line, temp);
         }
@@ -270,11 +279,42 @@ void createLine(char* line, instruction* inst, int binary) {
         char offset[10];
         sprintf(offset, "#%d", br_address);
         strcat(line, offset);
-
+        (*branch_offset) = br_address;
         // TODO return br_address through pointer variable for later showing labels
 
     } else if (!strcmp(type, "CB")) {
+        int rt = binary & 0x1F;
+        signed int cond_br_address = (binary >> 5) & 0x7FFFF;
+        int opcode = (binary >> 24) & 0xFF;
+        if (cond_br_address & (1 << 18)) {
+            cond_br_address |= ~0x7FFFF;
+        }
 
+        // have to handle B.cond before the below
+        if (opcode == 0x54) {   // B.cond
+            char cond[3];
+            replaceBranchCondition(cond, rt);
+            sprintf(line, "B.%-3s#%d", cond, cond_br_address);
+            (*branch_offset) = cond_br_address;
+            return;
+        } 
+
+
+        sprintf(line, "%-5s", inst->mnemonic);
+        char offset[10];
+        if (28 <= rt && rt <= 31) {
+            char rt_c[4];
+            replaceSpecialRegister(rt_c, rt);
+            strcat(line, rt_c);
+            strcat(line, ", ");
+        } else {
+            char temp[5];
+            sprintf(temp, "x%d, ", rt);
+            strcat(line, temp);
+        }
+        sprintf(offset, "#%d", cond_br_address);
+        strcat(line, offset);
+        (*branch_offset) = cond_br_address;
     }
 
 }
@@ -290,8 +330,10 @@ void decode_instruction(int binary) {
     int res = findInstruction(opcode);
     printf("index of instruction: %d\n", res);
 
+    int offset;
+    int* branch_offset = &offset;
     char line[25];
-    createLine(line, &instructions[res], binary);
+    createLine(line, &instructions[res], binary, branch_offset);
 
     printf("  %s\n", line);
     
@@ -360,6 +402,60 @@ void replaceSpecialRegister(char* reg, int r) {
 }
 
 /**
+ * Given the Rt of the B.cond instruction, writes
+ * the appropriate condition string to char* condition.
+ */
+void replaceBranchCondition(char* condition, int rt) {
+    switch (rt) {
+        case 0x0:
+            strcpy(condition, "EQ");
+            break;
+        case 0x1:
+            strcpy(condition, "NE");
+            break;
+        case 0x2:
+            strcpy(condition, "HS");
+            break;
+        case 0x3:
+            strcpy(condition, "LO");
+            break;
+        case 0x4:
+            strcpy(condition, "MI");
+            break;
+        case 0x5:
+            strcpy(condition, "PL");
+            break;
+        case 0x6:
+            strcpy(condition, "VS");
+            break;
+        case 0x7:
+            strcpy(condition, "VC");
+            break;
+        case 0x8:
+            strcpy(condition, "HI");
+            break;
+        case 0x9:
+            strcpy(condition, "LS");
+            break;
+        case 0xA:
+            strcpy(condition, "GE");
+            break;
+        case 0xB:
+            strcpy(condition, "LT");
+            break;
+        case 0xC:
+            strcpy(condition, "GT");
+            break;
+        case 0xD:
+            strcpy(condition, "LE");
+            break;
+        default:
+            printf("ERROR in replaceBranchCondition with input: %d\n", rt);
+    }
+}
+
+
+/**
  * Count number of lines after disassembling 
  * create array of boolean assign 1 if "label_index:\n" needs to be displayed
  */
@@ -382,7 +478,9 @@ int main() {
     // for (int i = 0; i < 6; i++) {
     //     decode_instruction(nums[i]);
     // }
-    decode_instruction(0x94000000);
+    // decode_instruction(0xB5FFFFA1);
+    // decode_instruction(0xB4000021);
+    decode_instruction(0x54FFFF64);
     // printf("Count %u\n", countBits(0b10001011000111110000001111100000));
     // printf("%lu", sizeof(int));
 
