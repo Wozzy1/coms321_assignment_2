@@ -1,0 +1,409 @@
+// Wilson Diep - diepw50@iastate.edu
+// Carah Su - csu26@iastate.edu
+
+// Create array of size 10
+ADD x0, XZR, XZR
+ADDI x1, XZR, #10
+BL fill
+
+ADD x1, XZR, XZR
+ADDI x2, XZR, #9
+BL quicksort_recurse
+HALT
+
+// ======
+
+fill:
+
+ADD x9, XZR, XZR	// i = 0
+fill_top:
+LSL x10, x9, #3     // x10 - int offset = i * 8
+ADD x11, x0, x10    // int temp = address + offset
+STUR x1, [x11, #0]  // store value x1 at address x11
+ADDI x9, x9, #1     // i++
+SUBI x1, x1, #1     // n--
+CBNZ x1, fill_top   // if (n != 0) continue;
+
+BR LR               // return
+
+
+// Each recursive procedure call allocates 4 bytes on the stack
+quicksort_recurse:
+
+// x0 - base addr
+// x1 - index f
+// x2 - index l
+// LR 
+
+// x9  - int partition;
+// x10 - temp
+
+SUBS x10, x1, x2            // f - l
+B.GE quicksort_recurse_end  // if (f >= l) goto end
+
+SUBI SP, SP, #32            // allocate X bytes of memory
+STUR x0, [SP, #0]           // push base addr to stack
+STUR x1, [SP, #8]           // push index f to stack
+STUR x2, [SP, #16]          // push index l to stack
+STUR LR, [SP, #24]          // push LR to stack
+// params x0, x1, x2 already set as base addr, f, l
+
+// ====
+// temp
+// SUBI x25, x25, #1
+// CBZ x25, debug
+// ====
+
+BL partition
+PRNT x0
+PRNT SP
+
+//SUBI x15, x0, #2
+//CBNZ x15, debug
+//HALT
+debug:
+
+// return from partition with value p in x0
+ADD x9, XZR, x0            // int p = partition()
+
+LDUR LR, [SP, #24]          // restore LR
+LDUR x2, [SP, #16]          // restore l
+LDUR x1, [SP, #8]           // restore f
+LDUR x0, [SP, #0]           // restore base addr
+
+SUBI SP, SP, #8             // allocate another byte
+STUR x9, [SP, #32]          // store int p on stack
+
+ADD x2, XZR, x9             // x2 = p
+SUBI x2, x2, #1             // x2 -= 1
+// need to set up params a, f, p-1
+BL quicksort_recurse
+HALT
+// no return value but we know it is unchanged since x0-2 is reloaded
+
+
+ADD x1, XZR, x9             // x1 = p
+ADDI x1, x1, #1             // x1++
+// need to set up params a, p+1, l
+BL quicksort_recurse
+
+LDUR LR, [SP, #32]          // restore LR
+LDUR x9, [SP, #24]          // restore p
+LDUR x2, [SP, #16]          // restore l
+LDUR x1, [SP, #8]           // restore f
+LDUR x0, [SP, #0]           // restore base addr
+ADDI SP, SP, #40            // deallocate 4 bytes of memory used in this frame
+
+quicksort_recurse_end:      // END OF quicksort_recurse
+//HALT
+BR LR
+
+
+
+// =====
+
+// x0 - base arr address
+// x1 - int index_i
+// x2 - int index_j
+
+
+// x9 - int temp
+// x10 - int shifted_i
+// x11 - int shifted_j
+// copy x1 to stack
+// copy x2 to stack
+// so i can shift them 3 bit
+
+swap:
+
+SUBI SP, SP, #16
+STUR x1, [SP, #0]
+STUR x2, [SP, #8]
+
+LSL x1, x1, #3      // offset_1 = index_i * 8 
+LSL x2, x2, #3      // offset_2 = index_j * 8
+ADD x10, x0, x1     // int shifted_i = offset_1 + base address
+ADD x11, x0, x2     // int shifted_j = offset_2 + base address
+LDUR x9, [x10, #0]  // int temp = a[shifted_i]
+LDUR x2, [x11, #0]  // x2 = a[shifted_j]
+STUR x2, [x10, #0]  // a[shifted_i] = x2
+STUR x9, [x11, #0]  // a[shifted_j] = temp
+
+LDUR x2, [SP, #8]
+LDUR x1, [SP, #0]
+ADDI SP, SP, #16
+
+BR LR
+
+// ========================
+next_i:
+// iterate array forwards from i to last index L inclusive
+// return early on the first element less than value p
+
+// two exit conditions: 
+
+// SUBS XZR, i, l
+// B.GT next_i_end
+// SUBS XZR, a[i * 8], p
+// B.LT  next_i_end
+
+// x0 - array base address
+// x1 - current index i
+// x2 - last address L
+// x3 - value of partition
+
+// x9  - int shifted_i = i * 8
+// x10 - int temp = shifted_i + base address
+// x11 - int val of arr[shifted_i]
+
+SUBI SP, SP, #40
+STUR x0, [SP, #0]
+STUR x1, [SP, #8]
+STUR x2, [SP, #16]
+STUR x3, [SP, #24]
+STUR LR, [SP, #32]
+
+
+loop_top_next_i:
+LSL x9, x1, #3      // x9: int shifted_i = i * 8
+SUBS XZR, x1, x2    // i - l
+B.GT next_i_end     // if (i > l) goto end
+ADD x10, x9, x0     // x10: int temp = shifted_i + base address
+LDUR x10, [x10, #0] // temp = arr[temp]
+SUBS XZR, x10, x3   // temp < p
+B.GE next_i_end     // if (temp >= p) goto end
+ADDI x1, x1, #1     // i++
+
+B loop_top_next_i
+
+next_i_end:
+
+ADDI x1, x1, #1
+ADD x0, XZR, x1     // return val = i
+
+LDUR LR, [SP, #32]
+LDUR x3, [SP, #24]
+LDUR x2, [SP, #16]
+LDUR x1, [SP, #8]
+// LDUR x0, [SP, #0]// dont need to load from stack, since return value
+ADDI SP, SP, #40
+
+
+BR LR               // return
+
+// ========================
+next_j:
+
+// x0 - base address
+// x1 - index j
+// x2 - index F
+// x3 - int partition
+
+// x9  - shifted_j
+// x10 - temp
+
+// SUBS XZR, f, j
+// B.GE end_next_j
+
+// LSL x9, x1, #3   // shifted_j = j * 8
+// ADD x10, x0, x9  // temp = shifted_j + base address
+// LDUR x10, [x10, #0]  // temp = arr[temp]
+
+// SUBS XZR, p, arr[shifted_j]
+// B.GT end_next_j
+SUBI SP, SP, #40
+STUR x0, [SP, #0]
+STUR x1, [SP, #8]
+STUR x2, [SP, #16]
+STUR x3, [SP, #24]
+STUR LR, [SP, #32]
+
+top_next_j:         // top of loop
+
+SUBS XZR, x1, x2    // j < f
+B.LE end_next_j     // if (j <= f) goto end
+
+LSL x9, x1, #3      // shifted_j = j * 8
+ADD x10, x0, x9     // temp = shifted_j + base address
+LDUR x10, [x10, #0] // temp = arr[temp]
+
+SUBS XZR, x10, x3   // p - temp
+B.LT end_next_j     // if (p < temp) goto end
+
+SUBI x1, x1, #1     // j--
+B top_next_j        // continue loop
+
+end_next_j:         // end of loop
+
+ADD x0, XZR, x1     // return val = j
+
+LDUR LR, [SP, #32]
+LDUR x3, [SP, #24]
+LDUR x2, [SP, #16]
+LDUR x1, [SP, #8]
+// Not loading x0, as it is return value
+ADDI SP, SP, #40
+
+BR LR               // return
+
+
+
+
+
+
+partition:
+
+// x0 - base address
+// x1 - index f
+// x2 - index l
+
+// x9  - int i
+// x10 - int j
+// x11 - int p
+
+// x12 - temp
+
+LSL x12, x1, #3     // temp = f * 8
+                    // shifted_f can be temp since not reused
+ADD x12, x12, x0    // temp = temp + base address
+LDUR x12, [x12, #0] // temp = arr[temp]
+ADD x11, XZR, x12
+ADDI x9, x1, #1     // int i = f + 1
+ADD x10, XZR, x2    // int j = l
+top_partition_loop:
+
+SUBS x15, x9, x10       // i - j
+B.GT end_partition_loop // if (i > j) goto end
+
+// to call next_i
+// save current x0-2
+// save current x9-11
+// save LR
+// place parameters in x0-3
+// BL next_i
+// move x0 to x9
+// restore data (except x0, x9)
+// now restore x0
+
+
+SUBI SP, SP, #48
+STUR x0, [SP, #0]
+STUR x1, [SP, #8]
+STUR x2, [SP, #16]
+STUR x10, [SP, #24]
+STUR x11, [SP, #32]
+STUR LR,  [SP, #40]
+
+                    // param 0 = base addr
+ADD x1, XZR, x9     // param 1 = i
+                    // param 2 = l
+ADD x3, XZR, x11    // param 3 = p
+
+BL next_i
+// need x0-2, x10, x11; x9 gets replaced with next_i val
+
+ADD x9, XZR, x0    // i = next_i
+
+LDUR LR, [SP, #40]
+LDUR x11, [SP, #32]
+LDUR x10, [SP, #24]
+LDUR x2, [SP, #16]
+LDUR x1, [SP, #8]
+LDUR x0, [SP, #0]
+ADDI SP, SP, #48
+
+// ====
+
+SUBI SP, SP, #48
+STUR x0, [SP, #0]
+STUR x1, [SP, #8]
+STUR x2, [SP, #16]
+
+STUR x9,  [SP, #24]
+STUR x11, [SP, #32]
+STUR LR,  [SP, #40]
+
+ADD x2, XZR, x1     // param 2 = f
+ADD x1, XZR, x10    // param 1 = j
+BL next_j
+// need x0-2, x9, x11; x10 gets replaced with next_j val
+
+ADD x10, XZR, x0    // j = next_j
+
+LDUR LR, [SP, #40]  // reload LR
+LDUR x11, [SP, #32] // reload p
+LDUR x9, [SP, #24]  // reload i
+
+LDUR x2, [SP, #16]  // reload l
+LDUR x1, [SP, #8]   // reload f
+LDUR x0, [SP, #0]   // reload base address after return val
+ADDI SP, SP, #48
+
+SUBS XZR, x9, x10   // i - j
+B.GE partition_skip_swap_ij
+
+SUBI SP, SP, #56
+STUR x0, [SP, #0]   // save base addr
+STUR x1, [SP, #8]   // save f
+STUR x2, [SP, #16]  // save l
+STUR x9,  [SP, #24] // save i
+STUR x10, [SP, #32] // save j
+STUR x11, [SP, #40] // save p
+STUR LR,  [SP, #48] // save LR 
+
+ADD x1, XZR, x9     // param x1 = i
+ADD x2, XZR, x10    // param x2 = j
+
+BL swap
+
+LDUR LR, [SP, #48]
+LDUR x11, [SP, #40]
+LDUR x10, [SP, #32]
+LDUR x9, [SP, #24]
+LDUR x2, [SP, #16]
+LDUR x1, [SP, #8]
+LDUR x0, [SP, #0]
+ADDI SP, SP, #56    // ADDED THIS
+
+partition_skip_swap_ij: // else if i > j
+
+B top_partition_loop    // back to top
+
+end_partition_loop:
+
+
+SUB x12, x10, x1   // temp = j - f
+CBZ x12,  skip_partition_swap_jf
+
+
+SUBI SP, SP, #56
+STUR x0, [SP, #0]   // save base addr
+STUR x1, [SP, #8]   // save f
+STUR x2, [SP, #16]  // save l
+
+STUR x9,  [SP, #24] // save i
+STUR x10, [SP, #32] // save j
+STUR x11, [SP, #40] // save p
+
+STUR LR,  [SP, #48] // save LR 
+
+ADD x2, XZR, x1     // param 2 = f
+ADD x1, XZR, x10    // param 1 = j
+BL swap             // no return val
+
+
+LDUR LR, [SP, #48]
+
+LDUR x11, [SP, #40]
+LDUR x10, [SP, #32]
+LDUR x9, [SP, #24]
+
+LDUR x2, [SP, #16]
+LDUR x1, [SP, #8]
+LDUR x0, [SP, #0]
+ADDI SP, SP, #56    // added this 
+
+skip_partition_swap_jf:
+ADD x0, XZR, x10    // return val = j
+BR LR
+

@@ -1,6 +1,30 @@
-#include<stdio.h>
-#include<string.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+#ifdef _WIN32
+#include <winsock.h>
+#else
+#include <arpa/inet.h>
+#endif
+
+#define LINE_SIZE 35
 #define NUM_INSTRUCTIONS 26
+#define DEBUG 0
+
+uint32_t to_LE(uint32_t value) {
+    // If the system is little-endian, no conversion is needed
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    return value;
+#else
+    // Convert to little-endian if the system is big-endian
+    return ((value >> 24) & 0x000000FF) |
+           ((value >> 8)  & 0x0000FF00) |
+           ((value << 8)  & 0x00FF0000) |
+           ((value << 24) & 0xFF000000);
+#endif
+}
 
 /**
  * Custom struct type for a given instruction that 
@@ -48,13 +72,14 @@ instruction instructions[] = {
 
 int findInstruction(int opcode);
 void createLine(char* line, instruction* inst, int binary, int* branch_offset);
-void decode_instruction(int binary);
+void decode_instruction(char* line, uint32_t binary, int* branch_offset);
 void printInstruction(instruction* inst);
 unsigned int countBits(unsigned int n);
 void appendBits(char* str, int start, unsigned int binary, int length);
 void printBits(unsigned int n);
 void replaceSpecialRegister(char* reg, int r);
 void replaceBranchCondition(char* condition, int rt);
+size_t count_lines(const char *filename);
 
 /**
  * Given an opcode, linear search through instructions 
@@ -64,45 +89,31 @@ int findInstruction(int opcode) {
     // searching for R and D type
     for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
         if (opcode == instructions[i].opcode) {
-            printf("opcode received: %#x\n", opcode);
+            if (DEBUG) printf("opcode received: %#x\n", opcode);
             return i;
         }
     }
     // searching for I type
     for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
         if (((opcode >> 1) & 0x7FF) == instructions[i].opcode) {
-            printf("opcode received: %#x\n", (opcode >> 1) & 0x7FF);
+            if (DEBUG) printf("opcode received: %#x\n", (opcode >> 1) & 0x7FF);
             return i;
         }
     }
     // searching for B type
     for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
         if (((opcode >> 5) & 0x3F) == instructions[i].opcode) {
-            printf("opcode received: %#x\n", (opcode >> 5) & 0x3F);
+            if (DEBUG) printf("opcode received: %#x\n", (opcode >> 5) & 0x3F);
             return i;
         }
     }
     // searching for CB type
     for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
         if (((opcode >> 3) & 0xFF) == instructions[i].opcode) {
-            printf("opcode received: %#x\n", (opcode >> 3) & 0xFF);
+            if (DEBUG) printf("opcode received: %#x\n", (opcode >> 3) & 0xFF);
             return i;
         }
     }
-
-    
-    // for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
-    //     if (opcode == instructions[i].opcode) {
-    //         printf("opcode received: %#x\n", opcode);
-    //         return i;
-    //     }
-    // }
-    // for (int i = 0; i <= NUM_INSTRUCTIONS; i++) {
-    //     if (opcode == instructions[i].opcode) {
-    //         printf("opcode received: %#x\n", opcode);
-    //         return i;
-    //     }
-    // }
 
     return -1;
 }
@@ -116,7 +127,7 @@ int findInstruction(int opcode) {
 void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
     char type[3];
     strcpy(type, inst->type);
-    printf("Received type: %s\n", type);
+    if (DEBUG) printf("Received type: %s\n", type);
 
     // find the fields for each type and create the line to be sent back
     if (!strcmp(type, "R")) {
@@ -130,7 +141,21 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         // need to check if the register number is special ie, SP, FP, LR, XZR (28:31)
 
         // if PRNT, PRNL, DUMP, HALT then print only the instruction name
-        if (opcode == 0b11111111101 || opcode == 0b11111111100 || opcode == 0b11111111110 || opcode == 0b11111111111) {
+        if (opcode == 0b11111111101) {
+            sprintf(line, "%-5s ", inst->mnemonic);
+            if (28 <= rd && rd <= 31) {
+                char rd_c[4];
+                replaceSpecialRegister(rd_c, rd);
+                strcat(line, rd_c);
+            } else {
+                char temp[5];
+                sprintf(temp, "x%d", rd);
+                strcat(line, temp);
+            }
+            return;
+        }
+
+        if (opcode == 0b11111111100 || opcode == 0b11111111110 || opcode == 0b11111111111) {
             sprintf(line, "%-5s ", inst->mnemonic);
             return;
         }
@@ -199,7 +224,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         int rn = (binary >> 5) & 0x1F;
         int immediate = (binary >> 10) & 0xFFF;
         int opcode = (binary >> 22) & 0x3FF;
-        printf("%X x%d x%d %d\n", opcode, rd, rn, immediate);
+        if (DEBUG) printf("%X x%d x%d %d\n", opcode, rd, rn, immediate);
 
         sprintf(line, "%-6s", inst->mnemonic);
         if (28 <= rd && rd <= 31) {
@@ -237,7 +262,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         int dt_address = (binary >> 12) & 0x1FF;
         int opcode = (binary >> 21) & 0x7FF;
 
-        printf("%X x%d [x%d, #%d]\n", opcode, rt, rn, dt_address);
+        if (DEBUG) printf("%X x%d [x%d, #%d]\n", opcode, rt, rn, dt_address);
 
         sprintf(line, "%-5s", inst->mnemonic);
 
@@ -299,7 +324,6 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
             return;
         } 
 
-
         sprintf(line, "%-5s", inst->mnemonic);
         char offset[10];
         if (28 <= rt && rt <= 31) {
@@ -325,20 +349,15 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
  * TODO update method to take a pointer of array of all dissassembled
  * instructions.
  */
-void decode_instruction(int binary) {
+void decode_instruction(char* line, uint32_t binary, int* branch_offset) {
     int opcode = (binary >> 21) & 0x7FF;
     int res = findInstruction(opcode);
-    printf("index of instruction: %d\n", res);
+    if (DEBUG) printf("index of instruction: %d\n", res);
 
-    int offset;
-    int* branch_offset = &offset;
-    char line[25];
     createLine(line, &instructions[res], binary, branch_offset);
 
     printf("  %s\n", line);
-    
 }
-
 
 // update later to handle actual printing, like name and fields
 void printInstruction(instruction* inst) {
@@ -456,36 +475,133 @@ void replaceBranchCondition(char* condition, int rt) {
 
 
 /**
+ * Returns number of lines in the file to read.
+ */
+size_t count_lines(const char *filename) {
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
+    }
+
+    uint32_t buffer;
+    size_t line_count = 0;
+    size_t bytesRead;
+
+    while ((bytesRead = fread(&buffer, 1, sizeof(buffer), file)) == sizeof(buffer)) {
+        line_count++;
+    }
+
+    // Handle any leftover bytes (if the file size is not a multiple of 4 bytes)
+    if (bytesRead > 0) {
+        line_count++; // Counting the last chunk, even if it's not 4 bytes
+    }
+
+    fclose(file);
+    return line_count;
+}
+/**
  * Count number of lines after disassembling 
  * create array of boolean assign 1 if "label_index:\n" needs to be displayed
  */
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <binary_file>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+    size_t lineCount = 0;
+    lineCount = count_lines(argv[1]); // if this doesn't error, next line shouldn't
+    if (DEBUG) printf("%ld\n", lineCount);
 
-int main() {
-    // SUB X12, X10, XZR = 11001011000111110000000101001100
+    char **lines = malloc(lineCount * sizeof(char *));
+    int label_pos[lineCount];
+    int labelCount = 0;
+    for (int i = 0; i < lineCount; i++) {
+        lines[i] = malloc(LINE_SIZE * sizeof(char)); // allocate space for each line
+        label_pos[i] = 0;
+    }
+    int pos = 0;
 
-    // printInstruction(&instructions[0]);
-    // decode_instruction(0b11001011000111110000000101001100);
-    
-//     int nums[] = { 
-// 0x91002BE1,
-// 0x92002822,
-// 0xB20003E3,
-// 0xD2000441,
-// 0xD1002022,
-// 0xF1003C24
-//     };
+    FILE *file = fopen(argv[1], "rb");
+    uint32_t buffer;
+    size_t bytesRead;
 
-    // for (int i = 0; i < 6; i++) {
-    //     decode_instruction(nums[i]);
-    // }
-    // decode_instruction(0xB5FFFFA1);
-    // decode_instruction(0xB4000021);
-    decode_instruction(0x54FFFF64);
-    // printf("Count %u\n", countBits(0b10001011000111110000001111100000));
-    // printf("%lu", sizeof(int));
+    printf("Processing instructions...\n");
+    while ((bytesRead = fread(&buffer, 1, sizeof(buffer), file)) == sizeof(buffer)) {
+        // Convert to big-endian if necessary using the htonl function
+        uint32_t converted = htonl(buffer);
+        if (DEBUG) printf("0x%08X\n", converted);
+        char line[LINE_SIZE];
+        int offset = 0;
+        int* offset_p = &offset;
+        decode_instruction(line, converted, offset_p);
+        strcpy(lines[pos++], line);
+        
+        if (offset != 0) { // end case of branching 0 lines, but ignoring that
+            label_pos[pos + offset] = 1; // place label flag
+        }
+    }
 
-    // char x[5];
-    // appendBits(x, 0, 0b11011, 5);
-    // printf("%s\n", x);
-    return 0;
+    /**
+     * 1) place label flag first, 
+     * 2) go through label_pos, if 1, add label_#\n to lines[pos]
+     * then when going through all instructions,
+     *   if instruction is branch type, 
+     *     then go to the offset and read lines[pos + offset] until '\n' 
+     *     then copy until '\n', use to replace lines[pos]'s #offset
+     * 
+     */
+    for (int i = 0; i < lineCount; i++) {
+        if (label_pos[i] != 0) {
+            char newLine[LINE_SIZE];
+            sprintf(newLine, "label_%d:\n%s", ++labelCount, lines[i-1]);
+            strcpy(lines[i-1], newLine);
+            // printf("--> %s\n", lines[i-1]);
+            // printf("--> %s\n", newLine);
+        }
+    }
+
+    for (int i = 0; i < lineCount; i++) {
+        // if B or B.cond
+        if (lines[i][0] == 'B' && (lines[i][1] == '.' || lines[i][1] == ' ')) {
+            int index = 6;
+            pos = 0;
+            char nums_c[15]; // arbitrary 15, hopefully no programs with label number overflowing
+            while (lines[i][index]) {
+                nums_c[pos++] = lines[i][index++];
+            }
+            int offset = atoi(nums_c); // convert the offset in instruction to int
+            
+            // printf("--> %s\n", lines[i + offset]);
+            
+            index = 0;
+            char label_to_copy[15];
+            pos = 0;
+            while (lines[i + offset][index] != ':') {
+                // printf("%c", lines[i + offset][index]);
+                label_to_copy[pos++] = lines[i + offset][index++];
+            }
+            label_to_copy[pos] = '\0';
+            // printf("--> %s\n", label_to_copy);
+            strcpy(lines[i]+5, label_to_copy);
+        }
+        else if (1) { // TODO handle BL, CBZ, CBNZ
+
+        }
+    }
+
+    printf("\nConverted:\n");
+    for (int i = 0; i < lineCount; i++) {
+        printf("%s\n", lines[i]);
+    }
+
+    if (!feof(file)) {
+        perror("Error reading file");
+        fclose(file);
+        return EXIT_FAILURE;
+    }
+
+    fclose(file);
+    printf("All instructions processed.\n");
+    return EXIT_SUCCESS;
 }

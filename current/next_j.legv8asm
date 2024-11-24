@@ -1,0 +1,56 @@
+
+
+
+
+next_j:
+
+
+// x0 - base address
+// x1 - index j
+// x2 - index F
+// x3 - int partition
+
+// x9  - shifted_j
+// x10 - temp
+
+// SUBS XZR, f, j
+// B.GE end_next_j
+
+// LSL x9, x1, #3   // shifted_j = j * 8
+// ADD x10, x0, x9  // temp = shifted_j + base address
+// LDUR x10, [x10, #0]  // temp = arr[temp]
+
+// SUBS XZR, p, arr[shifted_j]
+// B.GT end_next_j
+
+SUBI SP, SP, #32
+STUR x0, [SP, #0]
+STUR x1, [SP, #8]
+STUR x2, [SP, #16]
+STUR x3, [SP, #24]
+
+top_next_j:         // top of loop
+
+SUBS XZR, x2, x1    // f - j
+B.GE end_next_j     // if (f >= j) goto end
+
+LSL x9, x1, #3      // shifted_j = j * 8
+ADD x10, x0, x9     // temp = shifted_j + base address
+LDUR x10, [x10, #0] // temp = arr[temp]
+
+SUBS XZR, x3, x10   // p - temp
+B.LT end_next_j     // if (p < temp) goto end
+
+SUBI x1, x1, #1     // j--
+B top_next_j        // continue loop
+
+end_next_j:         // end of loop
+ADD x0, XZR, x1     // return val = j
+
+LDUR x3, [SP, #24]
+LDUR x2, [SP, #16]
+LDUR x1, [SP, #8]
+// Not loading x0, as it is return value
+ADDI SP, SP, #32
+
+BR LR               // return
