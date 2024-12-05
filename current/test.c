@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <endian.h>
 
+/*
 void read_and_print_4byte_chunks(const char *filename) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
@@ -40,4 +41,11 @@ int main(int argc, char *argv[]) {
     read_and_print_4byte_chunks(argv[1]);
 
     return EXIT_SUCCESS;
+}
+*/
+
+int main() {
+
+    
+    return 0;
 }

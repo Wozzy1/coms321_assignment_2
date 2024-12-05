@@ -1,3 +1,4 @@
+// Wilson Diep diepw50@iastate.edu
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -14,11 +15,11 @@
 #define DEBUG 0
 
 uint32_t to_LE(uint32_t value) {
-    // If the system is little-endian, no conversion is needed
+    // if the system is little-endian, no conversion is needed
 #if __BYTE_ORDER == __LITTLE_ENDIAN
     return value;
 #else
-    // Convert to little-endian if the system is big-endian
+    // convert to little-endian if the system is big-endian
     return ((value >> 24) & 0x000000FF) |
            ((value >> 8)  & 0x0000FF00) |
            ((value << 8)  & 0x00FF0000) |
@@ -356,7 +357,7 @@ void decode_instruction(char* line, uint32_t binary, int* branch_offset) {
 
     createLine(line, &instructions[res], binary, branch_offset);
 
-    printf("  %s\n", line);
+    // printf("  %s\n", line);
 }
 
 // update later to handle actual printing, like name and fields
@@ -542,6 +543,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    if (!feof(file)) {
+        perror("Error reading file");
+        fclose(file);
+        return EXIT_FAILURE;
+    }
+
+    fclose(file);
+
     /**
      * 1) place label flag first, 
      * 2) go through label_pos, if 1, add label_#\n to lines[pos]
@@ -549,7 +558,6 @@ int main(int argc, char *argv[]) {
      *   if instruction is branch type, 
      *     then go to the offset and read lines[pos + offset] until '\n' 
      *     then copy until '\n', use to replace lines[pos]'s #offset
-     * 
      */
     for (int i = 0; i < lineCount; i++) {
         if (label_pos[i] != 0) {
@@ -561,19 +569,21 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    
     for (int i = 0; i < lineCount; i++) {
-        // if B or B.cond
-        if (lines[i][0] == 'B' && (lines[i][1] == '.' || lines[i][1] == ' ')) {
+        // if B or B.cond or BL
+        if (lines[i][0] == 'B' && (lines[i][1] == '.' || lines[i][1] == ' ' || lines[i][1] == 'L')) {
             int index = 6;
             pos = 0;
             char nums_c[15]; // arbitrary 15, hopefully no programs with label number overflowing
-            while (lines[i][index]) {
+            while (index < strlen(lines[i]) && lines[i][index]) {
                 nums_c[pos++] = lines[i][index++];
             }
+            nums_c[pos] = '\0';
             int offset = atoi(nums_c); // convert the offset in instruction to int
-            
             // printf("--> %s\n", lines[i + offset]);
             
+            // use offset to find correct line, then copy label
             index = 0;
             char label_to_copy[15];
             pos = 0;
@@ -582,10 +592,120 @@ int main(int argc, char *argv[]) {
                 label_to_copy[pos++] = lines[i + offset][index++];
             }
             label_to_copy[pos] = '\0';
-            // printf("--> %s\n", label_to_copy);
+            // printf("----> %s\n", label_to_copy);
             strcpy(lines[i]+5, label_to_copy);
         }
-        else if (1) { // TODO handle BL, CBZ, CBNZ
+        else if ((lines[i][0] == 'C' && lines[i][1] == 'B')) { // if inst starts with "CB" => CBZ & CBNZ
+            int index = 4;
+            // find index of '#' could have variable length operands
+            while (index < strlen(lines[i]) && lines[i][index] != '#') {
+                index++;
+            }
+            int start_index = index;
+            while (index < strlen(lines[i]) && lines[i][index] != '\0') {
+                index++;
+            }
+            int end_index = index;
+
+            char nums_c[15]; // arbitrary array size
+            pos = 0;
+            while (start_index < end_index) {
+                // printf("%c", lines[i][1 + start_index]);
+                nums_c[pos++] = lines[i][1 + start_index++];
+            }
+            int offset = atoi(nums_c);
+            // printf("num: %d\n", offset);
+            // printf("%s\n", nums_c);
+
+            // use offset to find correct line, then copy label
+            index = 0;
+            char label_to_copy[15];
+            pos = 0;
+            while (lines[i + offset][index] != ':') {
+                // printf("%c", lines[i + offset][index]);
+                label_to_copy[pos++] = lines[i + offset][index++];
+            }
+            label_to_copy[pos] = '\0';
+            
+            // find the position to insert the label name to branch to
+            index = 0;
+            while (index < strlen(lines[i]) && lines[i][index] != ',') {
+                index++;
+            }
+            index += 2;
+            strcpy(lines[i] + index, label_to_copy);
+        }
+    }
+
+    /**
+     * Clean up for nested branches:
+     *   iterate through all lines that have a label,
+     *   check if it is a branch inst
+     *     iterate past label, then check for B or C start
+     *   check if there is a '#' in the string
+     *   if so, go to that line and replace it with the correct label
+     */
+
+    for (int i = 0; i < lineCount; i++) {
+        if (lines[i][0] == 'l') {
+            // printf("TESTING %s\n", lines[i]);
+            int index = 8; // "label_1:\n" minimum length = 8
+            // index of hashtag
+            int hashIndex;
+            
+            // iterate until '#' or end of string
+            while (index < strlen(lines[i]) && lines[i][index] != '#') {
+                index++;
+            }
+
+            // if no '#' then continue
+            if (index >= strlen(lines[i])) {
+                continue;
+            }
+            hashIndex = index; // store the index of '#'
+
+            // now filter by lines that dont have "\nB" or "\nC"
+            index = 0;
+            while (index < strlen(lines[i]) && lines[i][index] != ':') {
+                index++;
+            }
+            if (lines[i][index+2] != 'B' && lines[i][index+2] != 'C') {
+                // printf("TESTING %s\n", lines[i]+index);
+                continue;
+            }
+            // while (index < strlen(lines[i]) && (lines[i][index-1] != '\n' && (lines[i][index] != 'B' || lines[i][index] != 'C'))) {
+            //     index++;
+            // } // leaves loop with index of first character if it is "\nB" or "\nC"
+            // 
+            // if (index >= strlen(lines[i])) {
+            //     continue;
+            // }
+            // now we know it is labeled inst + B or CB
+
+
+            // copies the immediate to nums_c
+            char nums_c[15];
+            pos = 0;
+            int tempIndex = hashIndex + 1;
+            while (lines[i][tempIndex] != '\0') {
+                nums_c[pos++] = lines[i][tempIndex++];
+            }
+            nums_c[pos] = '\0';
+            // printf("%s\n", nums_c);
+            int offset = atoi(nums_c);
+            // printf("%d\n", offset);
+            // printf("--> %s\n", lines[i]);
+            // printf("--> %s\n", lines[i+offset]);
+
+            index = 0;
+            char label_to_copy[15];
+            pos = 0;
+            while (lines[i + offset][index] != ':') {
+                // printf("%c", lines[i + offset][index]);
+                label_to_copy[pos++] = lines[i + offset][index++];
+            }
+            label_to_copy[pos] = '\0';
+            strcpy(lines[i]+hashIndex, label_to_copy);
 
         }
     }
@@ -593,15 +713,12 @@ int main(int argc, char *argv[]) {
     printf("\nConverted:\n");
     for (int i = 0; i < lineCount; i++) {
         printf("%s\n", lines[i]);
+        // printf("%ld\n", strlen(lines[i]));
+        // free(lines[i]);
     }
+    // free(lines);
 
-    if (!feof(file)) {
-        perror("Error reading file");
-        fclose(file);
-        return EXIT_FAILURE;
-    }
-
-    fclose(file);
+    
     printf("All instructions processed.\n");
     return EXIT_SUCCESS;
 }

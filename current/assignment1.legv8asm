@@ -1,0 +1,261 @@
+
+B main
+
+main:
+    // temporary hardcoding x0, x1
+    ADD x0, XZR, XZR
+    ADDI x1, XZR, #10
+    BL fill
+
+    ADD x1, XZR, XZR
+    ADDI x2, XZR, #9
+    BL quicksort_recurse
+
+    HALT
+
+// ======
+
+fill:
+    ADD x9, XZR, XZR	// i = 0
+    fill_top:
+    LSL x10, x9, #3     // x10 - int offset = i * 8
+    ADD x11, x0, x10    // int temp = address + offset
+    STUR x1, [x11, #0]  // store value x1 at address x11
+    ADDI x9, x9, #1     // i++
+    SUBI x1, x1, #1     // n--
+    CBNZ x1, fill_top   // if (n != 0) continue;
+
+BR LR               // return
+
+
+
+next_i:
+    SUBI SP, SP, #40
+    STUR x0, [SP, #0]
+    STUR x1, [SP, #8]
+    STUR x2, [SP, #16]
+    STUR x3, [SP, #24]
+    STUR LR, [SP, #32]
+
+loop_top_next_i:
+    LSL x9, x1, #3          // x9: int shifted_i = i * 8
+    SUBS XZR, x1, x2              // check if i > L
+    B.GT next_i_end         // if (i > L) goto end
+    ADD x10, x9, x0         // x10: address of arr[i] = base address + shifted_i
+    LDUR x11, [x10, #0]     // load arr[i] into x11
+    SUBS XZR, x11, x3       // check if arr[i] < p
+    B.LT next_i_end         // if arr[i] < p, exit loop
+    ADDI x1, x1, #1         // i++
+
+    B loop_top_next_i
+
+next_i_end:
+    ADD x0, XZR, x1              // return i in x0
+
+    // restore the stack and registers
+    LDUR LR, [SP, #32]
+    LDUR x3, [SP, #24]
+    LDUR x2, [SP, #16]
+    LDUR x1, [SP, #8]
+    // LDUR x0, [SP, #0] // Only needed if we want to use the original x0
+    ADDI SP, SP, #40
+    BR LR                   // return
+
+
+next_j:
+    SUBI SP, SP, #40
+    STUR x0, [SP, #0]
+    STUR x1, [SP, #8]
+    STUR x2, [SP, #16]
+    STUR x3, [SP, #24]
+    STUR LR, [SP, #32]
+
+top_next_j:                // start of loop
+    SUBS XZR, x2, x1       // check if j > F
+    B.GE end_next_j        // if j <= F, exit loop
+
+    LSL x9, x1, #3         // shifted_j = j * 8
+    ADD x10, x0, x9        // temp = base address + shifted_j
+    LDUR x10, [x10, #0]    // load arr[j] into temp
+
+    SUBS XZR, x10, x3      // compare arr[j] - p
+    B.LT end_next_j        // if arr[j] < p, exit loop
+
+    SUBI x1, x1, #1        // j--
+    B top_next_j           // repeat loop
+
+end_next_j:
+
+    ADD x0, XZR, x1             // return j in x0
+
+    // Restore saved registers
+    LDUR LR, [SP, #32]
+    LDUR x3, [SP, #24]
+    LDUR x2, [SP, #16]
+    LDUR x1, [SP, #8]
+    // LDUR x0, [SP, #0]   // not necessary if x0 is only used for return
+    ADDI SP, SP, #40       // restore stack pointer
+
+    BR LR                  // return
+
+
+partition:
+    SUBI SP, SP, #56
+    STUR x0, [SP, #0]
+    STUR x1, [SP, #8]
+    STUR x2, [SP, #16]
+    STUR x9, [SP, #24]
+    STUR x10, [SP, #32]
+    STUR x11, [SP, #40]
+    STUR LR, [SP, #48]
+
+    // load partition value p from arr[f]
+    LSL x12, x1, #3            // x12 = f * 8
+    ADD x12, x12, x0           // x12 = base address + f * 8
+    LDUR x9, [x12, #0]         // x9 = arr[f], partition value p
+
+    // init i and j
+    ADDI x10, x1, #1           // x10 = f + 1, index i
+    ADD x11, XZR, x2                // x11 = l, index j
+
+partition_loop_top:
+    // Check if i <= j
+    SUBS XZR, x10, x11
+    B.GT partition_loop_end    // break loop if i > j
+
+    // call next_i to find the next index i >= p
+    ADD x1, XZR, x10                // x1 = i
+    ADD x3, XZR, x9                 // x3 = p
+    BL next_i                  // x0 = next_i result
+    ADD x10, XZR, x0                // update i
+
+    // call next_j to find the next index j < p
+    ADD x1, XZR, x11                // x1 = j
+    ADD x2, XZR, x1                 // x2 = f for next_j call
+    ADD x3, XZR, x9                 // x3 = p
+    BL next_j                  // x0 = next_j result
+    ADD x11, XZR, x0                // update j
+
+    // if i >= j, break
+    SUBS XZR, x10, x11
+    B.GE no_swap
+
+    // swap arr[i] and arr[j]
+    ADD x1, XZR, x10                // x1 = i
+    ADD x2, XZR, x11                // x2 = j
+    BL swap                    
+
+no_swap:
+    B partition_loop_top       // repeat the loop
+
+partition_loop_end:
+    // if j != f, swap arr[f] and arr[j] for partition
+    SUBS x12, x11, x1
+    CBZ x12, end_partition     // if j == f, skip final swap
+
+    // last swap between arr[f] and arr[j]
+    ADD x1, XZR, x1                 // x1 = f
+    ADD x2, XZR, x11                // x2 = j
+    BL swap
+
+end_partition:
+    ADD x0, XZR, x11                // set return value as j
+
+    // restore registers from the stack
+    LDUR LR, [SP, #48]
+    LDUR x11, [SP, #40]
+    LDUR x10, [SP, #32]
+    LDUR x9, [SP, #24]
+    LDUR x2, [SP, #16]
+    LDUR x1, [SP, #8]
+    LDUR x0, [SP, #0]
+    ADDI SP, SP, #56           // deallocate stack space
+
+    BR LR                      // return
+
+
+quicksort_recurse:
+    SUBS XZR, x1, x2                // if f >= l, return
+    B.GE recurse_end
+
+    // save registers on the stack
+    SUBI SP, SP, #32
+    STUR x0, [SP, #0]
+    STUR x1, [SP, #8]
+    STUR x2, [SP, #16]
+    STUR LR, [SP, #24]
+
+    // partition array and get pivot index in x0
+    BL partition
+    ADD x9, XZR, x0                // save partition result (pivot index) in x9
+
+    // restore registers after partition call
+    LDUR LR, [SP, #24]
+    LDUR x2, [SP, #16]
+    LDUR x1, [SP, #8]
+    LDUR x0, [SP, #0]
+    ADDI SP, SP, #32          // reset SP after partition
+
+    // recursive call: quicksort_recurse(base, f, p - 1)
+    SUBI SP, SP, #32
+    STUR x0, [SP, #0]
+    STUR x1, [SP, #8]
+    STUR x2, [SP, #16]
+    STUR x9, [SP, #24]
+    STUR LR, [SP, #28]
+
+    ADD x2, XZR, x9                // set x2 to p
+    SUBI x2, x2, #1           // x2 = p - 1
+    BL quicksort_recurse
+
+    // restore registers after left quicksort_recurse call
+    LDUR LR, [SP, #28]
+    LDUR x9, [SP, #24]
+    LDUR x2, [SP, #16]
+    LDUR x1, [SP, #8]
+    LDUR x0, [SP, #0]
+    ADDI SP, SP, #32          // reset SP after left recursive call
+
+    // recursive call: quicksort_recurse(base, p + 1, l)
+    SUBI SP, SP, #32
+    STUR x0, [SP, #0]
+    STUR x1, [SP, #8]
+    STUR x2, [SP, #16]
+    STUR x9, [SP, #24]
+    STUR LR, [SP, #28]
+
+    ADDI x1, x9, #1           // set x1 to p + 1
+    BL quicksort_recurse
+
+    // restore registers after right quicksort_recurse call
+    LDUR LR, [SP, #28]
+    LDUR x9, [SP, #24]
+    LDUR x2, [SP, #16]
+    LDUR x1, [SP, #8]
+    LDUR x0, [SP, #0]
+    ADDI SP, SP, #32          // reset SP after right recursive call
+
+recurse_end:
+    BR LR                      // return
+
+
+swap:
+    SUBI SP, SP, #16          // allocate stack
+    STUR x1, [SP, #0]         // save index_i
+    STUR x2, [SP, #8]         // save index_j
+
+    LSL x1, x1, #3            // offset_1 = index_i * 8
+    LSL x2, x2, #3            // offset_2 = index_j * 8
+    ADD x10, x0, x1           // shifted_i = base + offset_1
+    ADD x11, x0, x2           // shifted_j = base + offset_2
+
+    LDUR x9, [x10, #0]        // temp = a[shifted_i]
+    LDUR x2, [x11, #0]        // x2 = a[shifted_j]
+    STUR x2, [x10, #0]        // a[shifted_i] = a[shifted_j]
+    STUR x9, [x11, #0]        // a[shifted_j] = temp
+
+    LDUR x2, [SP, #8]         // restore index_j
+    LDUR x1, [SP, #0]         // restore index_i
+    ADDI SP, SP, #16          // deallocate stack
+
+    BR LR                     // return
