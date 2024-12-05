@@ -74,6 +74,10 @@ instruction instructions[] = {
 int findInstruction(int opcode);
 void createLine(char* line, instruction* inst, int binary, int* branch_offset);
 void decode_instruction(char* line, uint32_t binary, int* branch_offset);
+void printInstruction(instruction* inst);
+unsigned int countBits(unsigned int n);
+void appendBits(char* str, int start, unsigned int binary, int length);
+void printBits(unsigned int n);
 void replaceSpecialRegister(char* reg, int r);
 void replaceBranchCondition(char* condition, int rt);
 size_t count_lines(const char *filename);
@@ -133,8 +137,10 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         int shamt = (binary >> 10) & 0x3F;
         int rm = (binary >> 16) & 0x1F;
         int opcode = (binary >> 21) & 0x7FF;
+        // printf("%X x%d %X %X %X\n", opcode, rm, shamt, rn, rd);
 
         // need to check if the register number is special ie, SP, FP, LR, XZR (28:31)
+
         // if PRNT, PRNL, DUMP, HALT then print only the instruction name
         if (opcode == 0b11111111101) {
             sprintf(line, "%-5s ", inst->mnemonic);
@@ -160,6 +166,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
             if (28 <= rn && rn <= 31) {
                 char rn_c[4];
                 replaceSpecialRegister(rn_c, rn);
+                // sprintf(line, "%s ", rn_c);
                 strcat(line, rn_c);
             } else {
                 char temp[5];
@@ -173,6 +180,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         if (28 <= rd && rd <= 31) {
             char rd_c[4];
             replaceSpecialRegister(rd_c, rd);
+            // sprintf(line, "%s ", rd_c);
             strcat(line, rd_c);
             strcat(line, ", ");
         } else {
@@ -223,6 +231,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         if (28 <= rd && rd <= 31) {
             char rd_c[4];
             replaceSpecialRegister(rd_c, rd);
+            // sprintf(line, "%s ", rd_c);
             strcat(line, rd_c);
             strcat(line, ", ");
         } else {
@@ -234,6 +243,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         if (28 <= rn && rn <= 31) {
             char rn_c[4];
             replaceSpecialRegister(rn_c, rn);
+            // sprintf(line, "%s ", rn_c);
             strcat(line, rn_c);
             strcat(line, ", ");
         } else {
@@ -271,6 +281,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         if (28 <= rn && rn <= 31) {
             char rn_c[6];
             replaceSpecialRegister(rn_c, rn);
+            // sprintf(line, "%s ", rn_c);
             strcat(line, rn_c);
             strcat(line, ", ");
         } else {
@@ -295,6 +306,7 @@ void createLine(char* line, instruction* inst, int binary, int* branch_offset) {
         sprintf(offset, "#%d", br_address);
         strcat(line, offset);
         (*branch_offset) = br_address;
+        // TODO return br_address through pointer variable for later showing labels
 
     } else if (!strcmp(type, "CB")) {
         int rt = binary & 0x1F;
@@ -344,6 +356,47 @@ void decode_instruction(char* line, uint32_t binary, int* branch_offset) {
     if (DEBUG) printf("index of instruction: %d\n", res);
 
     createLine(line, &instructions[res], binary, branch_offset);
+
+    // printf("  %s\n", line);
+}
+
+// update later to handle actual printing, like name and fields
+void printInstruction(instruction* inst) {
+    printf("%-5s %s %#x\n", inst->mnemonic, inst->type, inst->opcode);
+}
+
+/**
+ * Helper method to return the number of bits in a bitstring
+ */
+unsigned int countBits(unsigned int n) 
+{ 
+   unsigned int count = 0; 
+   while (n) { 
+        count++; 
+        n >>= 1; 
+    } 
+    return count; 
+}
+
+/**
+ * Helper method to concat a binary value to a string
+ */
+void appendBits(char* str, int start, unsigned int binary, int length) {
+    for (int i = start, pos = 0; i < length; i++, pos++) {
+        str[i] = (binary >> pos) & 0x1 ? '1' : '0';
+    }
+}
+
+/**
+ * Helper method to print a bianry string of any length
+ */
+void printBits(unsigned int n) {
+    int numBits = countBits(n);
+    // char* ptr = malloc(ptr, numBits * 1);
+    for (int i = 0; i < numBits; i++) {
+        printf("%d", (n >>= i) & 0x1); 
+    }
+    printf("\n");
 }
 
 /**
@@ -421,6 +474,7 @@ void replaceBranchCondition(char* condition, int rt) {
     }
 }
 
+
 /**
  * Returns number of lines in the file to read.
  */
@@ -439,17 +493,17 @@ size_t count_lines(const char *filename) {
         line_count++;
     }
 
-    // handle any leftover bytes (if the file size is not a multiple of 4 bytes)
+    // Handle any leftover bytes (if the file size is not a multiple of 4 bytes)
     if (bytesRead > 0) {
-        line_count++; // counting the last chunk, even if it's not 4 bytes
+        line_count++; // Counting the last chunk, even if it's not 4 bytes
     }
 
     fclose(file);
     return line_count;
 }
 /**
- * Disassembler for reading legv8asm binary files as a command line argument and prints the 
- * human readable legv8asm code.
+ * Count number of lines after disassembling 
+ * create array of boolean assign 1 if "label_index:\n" needs to be displayed
  */
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -473,8 +527,9 @@ int main(int argc, char *argv[]) {
     uint32_t buffer;
     size_t bytesRead;
 
+    printf("Processing instructions...\n");
     while ((bytesRead = fread(&buffer, 1, sizeof(buffer), file)) == sizeof(buffer)) {
-        // convert to big-endian if necessary using the htonl function
+        // Convert to big-endian if necessary using the htonl function
         uint32_t converted = htonl(buffer);
         if (DEBUG) printf("0x%08X\n", converted);
         char line[LINE_SIZE];
@@ -509,8 +564,11 @@ int main(int argc, char *argv[]) {
             char newLine[LINE_SIZE];
             sprintf(newLine, "label_%d:\n%s", ++labelCount, lines[i-1]);
             strcpy(lines[i-1], newLine);
+            // printf("--> %s\n", lines[i-1]);
+            // printf("--> %s\n", newLine);
         }
     }
+
     
     for (int i = 0; i < lineCount; i++) {
         // if B or B.cond or BL
@@ -523,15 +581,18 @@ int main(int argc, char *argv[]) {
             }
             nums_c[pos] = '\0';
             int offset = atoi(nums_c); // convert the offset in instruction to int
+            // printf("--> %s\n", lines[i + offset]);
             
             // use offset to find correct line, then copy label
             index = 0;
             char label_to_copy[15];
             pos = 0;
             while (lines[i + offset][index] != ':') {
+                // printf("%c", lines[i + offset][index]);
                 label_to_copy[pos++] = lines[i + offset][index++];
             }
             label_to_copy[pos] = '\0';
+            // printf("----> %s\n", label_to_copy);
             strcpy(lines[i]+5, label_to_copy);
         }
         else if ((lines[i][0] == 'C' && lines[i][1] == 'B')) { // if inst starts with "CB" => CBZ & CBNZ
@@ -549,15 +610,19 @@ int main(int argc, char *argv[]) {
             char nums_c[15]; // arbitrary array size
             pos = 0;
             while (start_index < end_index) {
+                // printf("%c", lines[i][1 + start_index]);
                 nums_c[pos++] = lines[i][1 + start_index++];
             }
             int offset = atoi(nums_c);
+            // printf("num: %d\n", offset);
+            // printf("%s\n", nums_c);
 
             // use offset to find correct line, then copy label
             index = 0;
             char label_to_copy[15];
             pos = 0;
             while (lines[i + offset][index] != ':') {
+                // printf("%c", lines[i + offset][index]);
                 label_to_copy[pos++] = lines[i + offset][index++];
             }
             label_to_copy[pos] = '\0';
@@ -582,10 +647,9 @@ int main(int argc, char *argv[]) {
      */
 
     for (int i = 0; i < lineCount; i++) {
-        // if line starts with 'l' => it is "label..."
         if (lines[i][0] == 'l') {
-            // "label_1:\n" minimum length = 8
-            int index = 8; 
+            // printf("TESTING %s\n", lines[i]);
+            int index = 8; // "label_1:\n" minimum length = 8
             // index of hashtag
             int hashIndex;
             
@@ -605,11 +669,19 @@ int main(int argc, char *argv[]) {
             while (index < strlen(lines[i]) && lines[i][index] != ':') {
                 index++;
             }
-
-            // skip the line
             if (lines[i][index+2] != 'B' && lines[i][index+2] != 'C') {
+                // printf("TESTING %s\n", lines[i]+index);
                 continue;
             }
+            // while (index < strlen(lines[i]) && (lines[i][index-1] != '\n' && (lines[i][index] != 'B' || lines[i][index] != 'C'))) {
+            //     index++;
+            // } // leaves loop with index of first character if it is "\nB" or "\nC"
+            // 
+            // if (index >= strlen(lines[i])) {
+            //     continue;
+            // }
+            // now we know it is labeled inst + B or CB
+
 
             // copies the immediate to nums_c
             char nums_c[15];
@@ -619,23 +691,34 @@ int main(int argc, char *argv[]) {
                 nums_c[pos++] = lines[i][tempIndex++];
             }
             nums_c[pos] = '\0';
+            // printf("%s\n", nums_c);
             int offset = atoi(nums_c);
+            // printf("%d\n", offset);
+            // printf("--> %s\n", lines[i]);
+            // printf("--> %s\n", lines[i+offset]);
 
             index = 0;
             char label_to_copy[15];
             pos = 0;
             while (lines[i + offset][index] != ':') {
+                // printf("%c", lines[i + offset][index]);
                 label_to_copy[pos++] = lines[i + offset][index++];
             }
             label_to_copy[pos] = '\0';
             strcpy(lines[i]+hashIndex, label_to_copy);
+
         }
     }
 
+    printf("\nConverted:\n");
     for (int i = 0; i < lineCount; i++) {
         printf("%s\n", lines[i]);
+        // printf("%ld\n", strlen(lines[i]));
+        // free(lines[i]);
     }
+    // free(lines);
+
     
-    printf("All instructions successfully processed.\n");
+    printf("All instructions processed.\n");
     return EXIT_SUCCESS;
 }
