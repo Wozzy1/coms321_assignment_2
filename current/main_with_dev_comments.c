@@ -514,10 +514,10 @@ int main(int argc, char *argv[]) {
     lineCount = count_lines(argv[1]); // if this doesn't error, next line shouldn't
     if (DEBUG) printf("%ld\n", lineCount);
 
-    char **lines = malloc(lineCount * sizeof(char *));
-    int label_pos[lineCount];
+    char **lines = malloc((lineCount+1) * sizeof(char *)); // +1
+    int label_pos[lineCount+1];                            // +1
     int labelCount = 0;
-    for (int i = 0; i < lineCount; i++) {
+    for (int i = 0; i < lineCount+1; i++) {                // +1
         lines[i] = malloc(LINE_SIZE * sizeof(char)); // allocate space for each line
         label_pos[i] = 0;
     }
@@ -550,7 +550,10 @@ int main(int argc, char *argv[]) {
     }
 
     fclose(file);
-
+    // for (int i = 0; i <= lineCount; i++) {
+    //     printf("%d %s\n", label_pos[i], lines[i]);
+    // }
+    // printf("\n\n");
     /**
      * 1) place label flag first, 
      * 2) go through label_pos, if 1, add label_#\n to lines[pos]
@@ -559,7 +562,7 @@ int main(int argc, char *argv[]) {
      *     then go to the offset and read lines[pos + offset] until '\n' 
      *     then copy until '\n', use to replace lines[pos]'s #offset
      */
-    for (int i = 0; i < lineCount; i++) {
+    for (int i = 0; i < lineCount+1; i++) { // +1
         if (label_pos[i] != 0) {
             char newLine[LINE_SIZE];
             sprintf(newLine, "label_%d:\n%s", ++labelCount, lines[i-1]);
@@ -569,8 +572,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // for (int i = 0; i < lineCount+1; i++) {
+    //     printf("%d %s\n", label_pos[i], lines[i]);
+    // }
     
-    for (int i = 0; i < lineCount; i++) {
+    for (int i = 0; i < lineCount+1; i++) { // +1
         // if B or B.cond or BL
         if (lines[i][0] == 'B' && (lines[i][1] == '.' || lines[i][1] == ' ' || lines[i][1] == 'L')) {
             int index = 6;
@@ -596,6 +602,7 @@ int main(int argc, char *argv[]) {
             strcpy(lines[i]+5, label_to_copy);
         }
         else if ((lines[i][0] == 'C' && lines[i][1] == 'B')) { // if inst starts with "CB" => CBZ & CBNZ
+            // printf("--> %s\n", lines[i]);
             int index = 4;
             // find index of '#' could have variable length operands
             while (index < strlen(lines[i]) && lines[i][index] != '#') {
@@ -621,8 +628,9 @@ int main(int argc, char *argv[]) {
             index = 0;
             char label_to_copy[15];
             pos = 0;
+            printf("The culprit --> %s\n", lines[i+offset]);
             while (lines[i + offset][index] != ':') {
-                // printf("%c", lines[i + offset][index]);
+                printf("%c", lines[i + offset][index]);
                 label_to_copy[pos++] = lines[i + offset][index++];
             }
             label_to_copy[pos] = '\0';

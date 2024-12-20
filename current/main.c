@@ -1,4 +1,3 @@
-// Wilson Diep diepw50@iastate.edu
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
